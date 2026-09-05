@@ -1,37 +1,40 @@
 <div align="center">
+ 
+# MerchantPass
 
-# 🛂 MerchantPass
-
-### Turn any Razorpay merchant into a business AI shopping agents can actually buy from.
+### **Make any Razorpay merchant ready for the age of AI buyers.**
 
 **Track 1 — AI Growth & Agentic Commerce · Razorpay AI Buildathon 2026**
 
-One canonical catalog. One policy engine. One audit trail. Any AI buyer-agent, on whichever commerce protocol it speaks — approved automatically within the merchant's own limits, or escalated to a human instead of silently failing.
+**One catalog. One policy engine. One audit trail. Multiple agent channels.**
 
- [💻 Explore the Code](#-getting-started) · [📸 See It In Action](#-the-merchant-journey)
+MerchantPass turns a merchant's existing Razorpay store into an **AI-agent-ready commerce layer** — letting buyer agents discover products, build carts, and initiate transactions while every purchase stays within **merchant-defined rules**.
+
+Orders that meet the rules proceed automatically. Orders outside the merchant's comfort zone are **escalated to a human — never silently failed.**
+
+[💻 Explore the Code](#-getting-started) · [📸 The Merchant Journey](#-the-merchant-journey)
 
 </div>
 
 ---
 
-```text
-Merchant Catalog  →  Agent-Readable Store  →  AI Discovery  →  Cart
-      →  Policy Check  →  Checkout  →  Razorpay Order  →  Logged & Explainable
-```
-
----
-
 ## 🎯 The Problem
+E-commerce was built for humans. The next buyer may be an AI agent.
 
-Online stores were built for humans clicking through pages — not for AI agents trying to parse them.
+A shopping agent needs more than a webpage. It needs a reliable way to:
 
-- An AI shopping agent needs a **structured, machine-readable catalog**, not a webpage designed for human eyes.
-- It needs a **reliable way to discover** what a merchant sells and at what price, right now.
-- It needs a **checkout it can call programmatically** — no forms, no CAPTCHAs, no human in the loop.
-- And a merchant needs **all of that to still respect their own rules** — what an agent is allowed to buy, up to how much, and what happens the moment it tries to go further.
+- 📦 Discover a structured, machine-readable catalog
+- 🔎 Understand products, prices, and availability
+- 🛒 Build and manage a cart programmatically
+- 💳 Transact through a payment rail
+- 🛡️ Respect merchant-defined spending and product rules
+- 🧾 Explain what happened when a transaction is approved, rejected, or escalated
 
-At the same time, the industry hasn't picked a winner: OpenAI's **ACP**, Google's **AP2**, Coinbase's **x402**, and NPCI's emerging UPI-native agent pattern are all competing to be how agents transact. A merchant betting on the wrong one integrates the wrong thing.
+And there's another problem: the agentic commerce ecosystem is fragmented.
 
+ACP, AP2, x402, and emerging UPI-native approaches are all taking different approaches to agent transactions.
+
+Merchants shouldn't have to rebuild their commerce stack every time the protocol landscape changes.
 ## 💡 The Solution
 
 ```text
@@ -51,6 +54,7 @@ Human checkout                      AI Agent → Cart → Policy Engine
                                        ↓
                                      Logged, reasoned, auditable
 ```
+
 
 **MerchantPass** sits between a merchant's Razorpay account and any AI buyer-agent. A merchant imports their catalog and sets their own limits once — auto-approval ceiling, blocked SKUs, allowed agents. From there, every purchase attempt from an AI agent is normalized, checked against that policy, and either goes straight through to a real Razorpay order or lands in the merchant's Approval Queue for a one-click human decision. Nothing is a silent black box: every decision, approved or not, is logged with the exact rule that produced it.
 
