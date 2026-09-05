@@ -203,13 +203,33 @@ router.post('/purchase', async (req, res) => {
 
 /**
  * GET /upi/consents
- * List active consents for merchant dashboard
+ * List active consents and technical protocol spec payload for merchant dashboard
  */
 router.get('/consents', async (req, res) => {
   try {
     const merchantId = req.query.merchant_id || 'merchant_001';
     const rows = await dbQuery(`SELECT * FROM upi_consents WHERE merchant_id = ? ORDER BY created_at DESC`, [merchantId]);
-    res.json(rows);
+    
+    res.json({
+      protocol: 'UPI-Native (NPCI + Razorpay UPI Circle Agent Payment Pattern)',
+      status: 'live',
+      specification: {
+        consent_registration_endpoint: 'POST /upi/consent',
+        purchase_execution_endpoint: 'POST /upi/purchase',
+        delegated_pattern: 'NPCI One-Time Consent with Registered Spending Cap (PIN-free transaction execution)'
+      },
+      sample_consent_registration_payload: {
+        buyer_agent_id: 'claude-shopping-agent-v1',
+        merchant_id: merchantId,
+        spending_cap_inr: 4000
+      },
+      sample_purchase_payload: {
+        consent_id: rows[0]?.consent_id || 'upi_cst_1788600000000_sample',
+        sku: 'SKU-001',
+        qty: 1
+      },
+      active_registered_consents: rows
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch UPI consents' });
   }
