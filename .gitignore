@@ -1,0 +1,15 @@
+# Environment Variables & Secrets
+.env
+.env.local
+
+# Dependencies
+node_modules/
+
+# Database Files & Logs
+*.db
+*.db-journal
+*.log
+
+# Build Outputs
+dist/
+build/

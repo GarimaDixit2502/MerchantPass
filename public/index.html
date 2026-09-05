@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MerchantPass — A merchant's passport to agentic commerce</title>
+  
+  <!-- Google Fonts & Tailwind CSS CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 & Babel CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              purple: '#432C81',
+              plum: '#58315A',
+              gold: '#ECBB5F',
+              lavender: '#CCC3FF',
+              coral: '#FF8989',
+              gray: '#868686',
+              bg: '#F8F7FC',
+              card: '#FFFFFF',
+              border: '#EAE6F5'
+            }
+          },
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #F8F7FC;
+      color: #33274F;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #F1EDFC;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #CCC3FF;
+      border-radius: 4px;
+    }
+    .pulse-dot {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .4; transform: scale(0.85); }
+    }
+    .hero-gradient {
+      background: radial-gradient(circle at 50% 0%, #F0EBFF 0%, #F8F7FC 70%);
+    }
+  </style>
+</head>
+<body class="font-sans antialiased selection:bg-[#432C81] selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      // Modes: 'onboarding' vs 'console'
+      const [isOnboarding, setIsOnboarding] = useState(() => {
+        return localStorage.getItem('agent_passport_onboarding_done') !== 'true';
+      });
+      const [onboardingStep, setOnboardingStep] = useState(1); // 1: Login, 2: Catalog, 3: Policy, 4: Live Confirmation
+
+      // Main Console Screen: 'live_orders' (Default) | 'approval_queue' | 'catalog' | 'policy' | 'channel_readiness'
+      const [activeTab, setActiveTab] = useState('live_orders');
+      
+      // Core Data State
+      const [merchantInfo, setMerchantInfo] = useState({
+        merchant_name: 'Kirana Express',
+        business_type: 'Grocery & FMCG Retail'
+      });
+      const [catalog, setCatalog] = useState(null);
+      const [auditLogs, setAuditLogs] = useState([]);
+      const [policy, setPolicy] = useState(null);
+      const [expandedOrderEvents, setExpandedOrderEvents] = useState(new Set());
+      const [isPolling, setIsPolling] = useState(true);
+      const [statusToast, setStatusToast] = useState(null);
+      const [actionEventId, setActionEventId] = useState(null);
+      const [isResetting, setIsResetting] = useState(false);
+      const [selectedProtocolFilter, setSelectedProtocolFilter] = useState('ALL');
+
+      // Product Form Modal State
+      const [showProductModal, setShowProductModal] = useState(false);
+      const [editingProduct, setEditingProduct] = useState(null);
+      const [productFormData, setProductFormData] = useState({
+        sku: '',
+        title: '',
+        description: '',
+        price_inr: '',
+        stock_qty: '20',
+        category: 'grocery',
+        gtin: '8901234567890',
+        is_blocked: false
+      });
+
+      // Excel/CSV Import State
+      const [showImportModal, setShowImportModal] = useState(false);
+      const [importPreviewData, setImportPreviewData] = useState(null);
+      const [isParsingImport, setIsParsingImport] = useState(false);
+      const [isConfirmingImport, setIsConfirmingImport] = useState(false);
+
+      // Policy Form State
+      const [policyFormData, setPolicyFormData] = useState({
+        auto_approve_ceiling_inr: 3000,
+        human_approval_ceiling_inr: 5000,
+        velocity_limit: 5,
+        blocked_skus: [],
+        allow_all_agents: true,
+        allowed_agent_list_text: 'chatgpt-shopping-agent-v1, claude-shopping-agent-v1'
+      });
+      const [isSavingPolicy, setIsSavingPolicy] = useState(false);
+
+      // Channel Readiness Payload State
+      const [expandedPayloadProtocol, setExpandedPayloadProtocol] = useState(null);
+      const [payloadData, setPayloadData] = useState({});
+
+      // Fetch Data Functions
+      const fetchCatalog = async () => {
+        try {
+          const res = await fetch('/catalog');
+          const data = await res.json();
+          setCatalog(data);
+          if (data.products && data.products.length === 0) {
+            setIsOnboarding(true);
+          }
+        } catch (err) {
+          console.error('Failed to fetch catalog:', err);
+        }
+      };
+
+      const fetchAuditLogs = async () => {
+        try {
+          const res = await fetch('/audit?merchant_id=merchant_001');
+          const data = await res.json();
+          setAuditLogs(data);
+        } catch (err) {
+          console.error('Failed to fetch audit logs:', err);
+        }
+      };
+
+      const fetchPolicy = async () => {
+        try {
+          const res = await fetch('/policy/merchant_001');
+          const data = await res.json();
+          setPolicy(data);
+          setPolicyFormData({
+            auto_approve_ceiling_inr: data.auto_approve_ceiling_inr,
+            human_approval_ceiling_inr: data.human_approval_ceiling_inr,
+            velocity_limit: data.velocity_limit || 5,
+            blocked_skus: data.blocked_skus || [],
+            allow_all_agents: (data.allowed_buyer_agent_ids || []).includes('*'),
+            allowed_agent_list_text: (data.allowed_buyer_agent_ids || []).filter(a => a !== '*').join(', ')
+          });
+        } catch (err) {
+          console.error('Failed to fetch policy:', err);
+        }
+      };
+
+      useEffect(() => {
+        fetchCatalog();
+        fetchAuditLogs();
+        fetchPolicy();
+
+        const interval = setInterval(() => {
+          if (isPolling && !isOnboarding) {
+            fetchAuditLogs();
+            fetchCatalog();
+          }
+        }, 3000);
+
+        return () => clearInterval(interval);
+      }, [isPolling, isOnboarding]);
+
+      // Toggle Order Decision Trace Drawer
+      const toggleOrderTrace = (eventId) => {
+        setExpandedOrderEvents(prev => {
+          const next = new Set(prev);
+          if (next.has(eventId)) next.delete(eventId);
+          else next.add(eventId);
+          return next;
+        });
+      };
+
+      // Handle Manual Approval for Escalated Orders
+      const handleApproveOrder = async (eventId) => {
+        setActionEventId(eventId);
+        try {
+          const res = await fetch('/audit/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: eventId })
+          });
+          const result = await res.json();
+          if (res.ok) {
+            setStatusToast({
+              title: 'Order Approved Live!',
+              type: 'success',
+              message: `Razorpay Order ${result.razorpay_order.id} generated for ₹${result.event.declared_total_inr}. SKU stock decremented.`
+            });
+            await fetchCatalog();
+            await fetchAuditLogs();
+          } else {
+            alert(result.error || 'Approval failed');
+          }
+        } catch (err) {
+          alert('Failed to connect to server');
+        } finally {
+          setActionEventId(null);
+        }
+      };
+
+      // Handle Manual Rejection for Escalated Orders
+      const handleRejectOrder = async (eventId) => {
+        setActionEventId(eventId);
+        try {
+          let res = await fetch(`/approval/${eventId}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: 'Rejected by merchant administrator' })
+          });
+
+          if (!res.ok) {
+            res = await fetch('/audit/reject', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ event_id: eventId, reason: 'Rejected by merchant administrator' })
+            });
+          }
+
+          const result = await res.json();
+          if (res.ok) {
+            setStatusToast({
+              title: 'Escalation Rejected',
+              type: 'error',
+              message: `Order ${eventId} rejected. Card removed from queue and logged in Live Orders.`
+            });
+            await fetchAuditLogs();
+          } else {
+            alert(result.error || 'Rejection failed');
+          }
+        } catch (err) {
+          alert('Failed to connect to server');
+        } finally {
+          setActionEventId(null);
+        }
+      };
+
+      // Reset Demo Data Handler
+      const handleResetDemoData = async () => {
+        if (!confirm('Reset demo data and restart Onboarding setup flow?')) return;
+        setIsResetting(true);
+        try {
+          const res = await fetch('/reset-demo', { method: 'POST' });
+          if (res.ok) {
+            localStorage.removeItem('agent_passport_onboarding_done');
+            setIsOnboarding(true);
+            setOnboardingStep(1);
+            setStatusToast({
+              title: 'Demo Data Reset Complete',
+              type: 'info',
+              message: 'Audit logs cleared & onboarding wizard restarted.'
+            });
+            await fetchCatalog();
+            await fetchAuditLogs();
+            await fetchPolicy();
+          }
+        } catch (err) {
+          alert('Failed to reset demo data');
+        } finally {
+          setIsResetting(false);
+        }
+      };
+
+      // Save Policy Handler
+      const handleSavePolicy = async (e) => {
+        if (e) e.preventDefault();
+        setIsSavingPolicy(true);
+        try {
+          const allowedAgents = policyFormData.allow_all_agents
+            ? ['*']
+            : policyFormData.allowed_agent_list_text.split(',').map(s => s.trim()).filter(Boolean);
+
+          const res = await fetch('/policy/merchant_001', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              auto_approve_ceiling_inr: Number(policyFormData.auto_approve_ceiling_inr),
+              human_approval_ceiling_inr: Number(policyFormData.human_approval_ceiling_inr),
+              velocity_limit: Number(policyFormData.velocity_limit),
+              blocked_skus: policyFormData.blocked_skus,
+              allowed_buyer_agent_ids: allowedAgents
+            })
+          });
+
+          const result = await res.json();
+          if (res.ok) {
+            setStatusToast({
+              title: 'Policy Guardrails Saved!',
+              type: 'success',
+              message: 'Merchant policy guardrails updated. Takes effect immediately for next agent evaluation!'
+            });
+            await fetchPolicy();
+            if (isOnboarding && onboardingStep === 3) {
+              setOnboardingStep(4);
+            }
+          } else {
+            alert(result.error || 'Failed to save policy');
+          }
+        } catch (err) {
+          alert('Failed to connect to server');
+        } finally {
+          setIsSavingPolicy(false);
+        }
+      };
+
+      // Product CRUD Handlers
+      const openAddProductModal = () => {
+        setEditingProduct(null);
+        setProductFormData({
+          sku: `SKU-${Math.floor(100 + Math.random() * 900)}`,
+          title: '',
+          description: '',
+          price_inr: '',
+          stock_qty: '20',
+          category: 'grocery',
+          gtin: '8901234567890',
+          is_blocked: false
+        });
+        setShowProductModal(true);
+      };
+
+      const openEditProductModal = (product) => {
+        const isBlocked = policy?.blocked_skus?.includes(product.sku) || false;
+        setEditingProduct(product);
+        setProductFormData({
+          sku: product.sku,
+          title: product.title,
+          description: product.description || '',
+          price_inr: String(product.price_inr),
+          stock_qty: String(product.stock_qty),
+          category: product.category || 'grocery',
+          gtin: product.gtin || '8901234567890',
+          is_blocked: isBlocked
+        });
+        setShowProductModal(true);
+      };
+
+      const handleSaveProduct = async (e) => {
+        e.preventDefault();
+        try {
+          const url = editingProduct ? `/catalog/${editingProduct.sku}` : '/catalog';
+          const method = editingProduct ? 'PUT' : 'POST';
+
+          const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(productFormData)
+          });
+
+          if (res.ok) {
+            setStatusToast({
+              title: editingProduct ? 'Product Updated' : 'New SKU Added',
+              type: 'success',
+              message: `SKU ${productFormData.sku} (${productFormData.title}) saved.`
+            });
+            setShowProductModal(false);
+            await fetchCatalog();
+            await fetchPolicy();
+          } else {
+            const errData = await res.json();
+            alert(errData.error || 'Failed to save product');
+          }
+        } catch (err) {
+          alert('Failed to save product');
+        }
+      };
+
+      const handleDeleteProduct = async (sku) => {
+        if (!confirm(`Delete SKU '${sku}' from live catalog? Historical orders will remain intact.`)) return;
+        try {
+          const res = await fetch(`/catalog/${sku}`, { method: 'DELETE' });
+          if (res.ok) {
+            setStatusToast({
+              title: 'Product SKU Deleted',
+              type: 'info',
+              message: `SKU '${sku}' removed from catalog. Past order logs preserved.`
+            });
+            await fetchCatalog();
+          }
+        } catch (err) {
+          alert('Failed to delete product SKU');
+        }
+      };
+
+      // Excel / CSV File Upload Handler
+      const handleFileUpload = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        setIsParsingImport(true);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          const res = await fetch('/catalog/import-preview', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            setImportPreviewData(data);
+            setShowImportModal(true);
+          } else {
+            alert(data.error || 'Failed to parse spreadsheet');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Failed to upload and parse file');
+        } finally {
+          setIsParsingImport(false);
+          if (e.target) e.target.value = ''; // Reset file input so re-uploading works seamlessly
+        }
+      };
+
+      const handleConfirmImport = async () => {
+        if (!importPreviewData || !importPreviewData.rows) return;
+        setIsConfirmingImport(true);
+
+        const validRows = importPreviewData.rows.filter(r => r.valid);
+        try {
+          const res = await fetch('/catalog/import-confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: validRows })
+          });
+
+          const result = await res.json();
+          if (res.ok) {
+            setStatusToast({
+              title: 'Catalog Import Complete!',
+              type: 'success',
+              message: `${result.inserted_count} SKUs added, ${result.updated_count} SKUs updated.`
+            });
+            setShowImportModal(false);
+            setImportPreviewData(null);
+            await fetchCatalog();
+
+            if (isOnboarding && onboardingStep === 2) {
+              setOnboardingStep(3);
+            }
+          } else {
+            alert(result.error || 'Failed to complete import');
+          }
+        } catch (err) {
+          alert('Failed to confirm import');
+        } finally {
+          setIsConfirmingImport(false);
+        }
+      };
+
+      // Complete Onboarding & Enter Main Console
+      const completeOnboardingAndEnterConsole = () => {
+        localStorage.setItem('agent_passport_onboarding_done', 'true');
+        setIsOnboarding(false);
+        setActiveTab('live_orders');
+      };
+
+      // Fetch Technical Payload for Channel Readiness
+      const togglePayloadView = async (protocol) => {
+        if (expandedPayloadProtocol === protocol) {
+          setExpandedPayloadProtocol(null);
+          return;
+        }
+
+        setExpandedPayloadProtocol(protocol);
+        if (!payloadData[protocol]) {
+          try {
+            let url = '';
+            if (protocol === 'acp') url = '/acp/feed';
+            else if (protocol === 'upi') url = '/upi/consents';
+            else if (protocol === 'ap2') url = '/ap2/preview/SKU-001';
+            else if (protocol === 'x402') url = '/x402/preview/SKU-001';
+
+            const res = await fetch(url);
+            const data = await res.json();
+            setPayloadData(prev => ({ ...prev, [protocol]: data }));
+          } catch (e) {
+            setPayloadData(prev => ({ ...prev, [protocol]: { error: 'Failed to fetch payload' } }));
+          }
+        }
+      };
+
+      const escalatedLogs = auditLogs.filter(log => log.decision === 'escalated' || log.decision === 'pending_approval');
+      const approvedCount = auditLogs.filter(log => log.decision === 'approved' || log.decision === 'paid').length;
+      const escalatedCount = escalatedLogs.length;
+      const rejectedCount = auditLogs.filter(log => log.decision === 'rejected').length;
+
+      const filteredAuditLogs = auditLogs.filter(log => {
+        if (selectedProtocolFilter === 'ALL') return true;
+        return log.protocol === selectedProtocolFilter;
+      });
+
+      // RENDERERS FOR SHARED MODALS (EXCEL REVIEW & PRODUCT EDIT)
+      const renderModals = () => (
+        <React.Fragment>
+          {/* EXCEL/CSV IMPORT PREVIEW MODAL */}
+          {showImportModal && importPreviewData && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 w-full max-w-4xl border border-[#CCC3FF] shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="font-black text-[#432C81] text-base">Spreadsheet Review & Validation</h3>
+                    <p className="text-xs text-[#868686]">
+                      Total Rows: {importPreviewData.total_rows} | Ready to Import: <span className="text-emerald-600 font-bold">{importPreviewData.valid_rows_count}</span> | Errors flagged: <span className="text-rose-600 font-bold">{importPreviewData.error_rows_count}</span>
+                    </p>
+                  </div>
+                  <button onClick={() => setShowImportModal(false)} className="text-[#868686] hover:text-[#432C81] text-lg font-bold">✕</button>
+                </div>
+
+                <div className="overflow-y-auto flex-1 custom-scrollbar border border-[#CCC3FF] rounded-2xl">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-[#F8F7FC] text-[#868686] font-bold sticky top-0 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2.5">Row</th>
+                        <th className="px-3 py-2.5">SKU</th>
+                        <th className="px-3 py-2.5">Title</th>
+                        <th className="px-3 py-2.5">Price (₹)</th>
+                        <th className="px-3 py-2.5">Stock</th>
+                        <th className="px-3 py-2.5">Status / Validation</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {importPreviewData.rows.map((r) => (
+                        <tr key={r.row_num} className={r.valid ? 'bg-white hover:bg-[#F8F7FC]' : 'bg-[#FFF0F0]'}>
+                          <td className="px-3 py-2 text-[#868686]">{r.row_num}</td>
+                          <td className="px-3 py-2 font-bold text-[#432C81]">{r.sku || '-'}</td>
+                          <td className="px-3 py-2 font-sans font-semibold text-slate-800">{r.title || '-'}</td>
+                          <td className="px-3 py-2 text-emerald-700 font-bold">₹{r.price_inr}</td>
+                          <td className="px-3 py-2 font-bold">{r.stock_qty}</td>
+                          <td className="px-3 py-2">
+                            {r.valid ? (
+                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                ✓ VALID (UPSERT)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-bold">
+                                ✕ {r.errors.join(', ')}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                  <span className="text-xs text-[#868686]">
+                    Valid rows ({importPreviewData.valid_rows_count}) will be upserted into SQLite catalog.
+                  </span>
+                  <div className="space-x-2">
+                    <button onClick={() => setShowImportModal(false)} className="px-4 py-2 rounded-xl bg-white text-[#868686] font-bold text-xs border">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmImport}
+                      disabled={isConfirmingImport || importPreviewData.valid_rows_count === 0}
+                      className="px-4 py-2 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold text-xs shadow-md disabled:opacity-50"
+                    >
+                      {isConfirmingImport ? 'Importing...' : `Confirm Import & Proceed ➔`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PRODUCT ADD/EDIT MODAL */}
+          {showProductModal && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-[#CCC3FF] shadow-2xl space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="font-extrabold text-[#432C81] text-base">
+                    {editingProduct ? `Edit SKU (${editingProduct.sku})` : 'Add New Product SKU'}
+                  </h3>
+                  <button onClick={() => setShowProductModal(false)} className="text-[#868686] hover:text-[#432C81] text-lg font-bold">✕</button>
+                </div>
+
+                <form onSubmit={handleSaveProduct} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-[#868686] font-bold mb-1">SKU ID</label>
+                    <input
+                      type="text"
+                      disabled={!!editingProduct}
+                      value={productFormData.sku}
+                      onChange={(e) => setProductFormData({ ...productFormData, sku: e.target.value })}
+                      required
+                      className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl px-3 py-2 text-[#432C81] font-mono font-bold disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[#868686] font-bold mb-1">Product Title</label>
+                    <input
+                      type="text"
+                      value={productFormData.title}
+                      onChange={(e) => setProductFormData({ ...productFormData, title: e.target.value })}
+                      required
+                      placeholder="e.g. Organic Brown Rice 5kg"
+                      className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl px-3 py-2 text-slate-800 font-semibold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[#868686] font-bold mb-1">Price (₹ INR)</label>
+                      <input
+                        type="number"
+                        value={productFormData.price_inr}
+                        onChange={(e) => setProductFormData({ ...productFormData, price_inr: e.target.value })}
+                        required
+                        placeholder="899"
+                        className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl px-3 py-2 text-[#432C81] font-mono font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[#868686] font-bold mb-1">Live Stock Qty</label>
+                      <input
+                        type="number"
+                        value={productFormData.stock_qty}
+                        onChange={(e) => setProductFormData({ ...productFormData, stock_qty: e.target.value })}
+                        required
+                        placeholder="20"
+                        className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl px-3 py-2 text-slate-800 font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[#868686] font-bold mb-1">Category</label>
+                    <select
+                      value={productFormData.category}
+                      onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
+                      className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl px-3 py-2 text-slate-800 font-semibold"
+                    >
+                      <option value="grocery">Grocery</option>
+                      <option value="beverages">Beverages</option>
+                      <option value="staples">Staples</option>
+                      <option value="dairy">Dairy</option>
+                      <option value="wellness">Wellness</option>
+                      <option value="household">Household</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-2 pt-2">
+                    <input
+                      type="checkbox"
+                      id="is_blocked_cb"
+                      checked={productFormData.is_blocked}
+                      onChange={(e) => setProductFormData({ ...productFormData, is_blocked: e.target.checked })}
+                      className="rounded border-[#CCC3FF]"
+                    />
+                    <label htmlFor="is_blocked_cb" className="text-[#58315A] font-bold text-xs">
+                      Block this SKU from AI Buyer Agents (Policy Engine Guardrail)
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-4 border-t border-slate-100">
+                    <button type="button" onClick={() => setShowProductModal(false)} className="px-4 py-2 rounded-xl bg-white text-[#868686] font-bold border">
+                      Cancel
+                    </button>
+                    <button type="submit" className="px-4 py-2 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold">
+                      Save SKU
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </React.Fragment>
+      );
+
+      // =========================================================================
+      // MODE A: LANDING & ONBOARDING PAGE (Exact design match with Image 2)
+      // =========================================================================
+      if (isOnboarding) {
+        return (
+          <div className="min-h-screen hero-gradient text-slate-800 flex flex-col justify-between pb-12">
+            
+            {/* Top Navigation Bar */}
+            <header className="w-full max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="h-10 w-10 rounded-xl bg-[#432C81] flex items-center justify-center font-extrabold text-white text-base shadow-md">
+                  MP
+                </div>
+                <span className="font-extrabold text-2xl tracking-tight text-[#432C81]">MerchantPass</span>
+              </div>
+
+              <div className="flex items-center space-x-2 bg-white/80 backdrop-blur px-4 py-2 rounded-full border border-[#CCC3FF]/50 text-xs font-semibold text-[#58315A] shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 pulse-dot"></span>
+                <span>Secure & Compliant</span>
+                <span className="text-[#868686] font-normal">| Built for ACP & UPI rails</span>
+                <svg className="w-4 h-4 text-[#432C81] ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+            </header>
+
+            {/* Hero Image Banner (Proportionately Sized to Match Merchant Setup Card) */}
+            <div className="w-full max-w-5xl mx-auto px-6 pt-2 pb-4">
+              <img 
+                src="/hero-banner.png" 
+                alt="MerchantPass - Your Store. AI-Ready." 
+                className="w-full h-auto max-h-[300px] object-contain mx-auto block"
+              />
+            </div>
+
+            {/* Main Content Section */}
+            <main className="w-full max-w-6xl mx-auto px-6 py-8 space-y-8">
+              
+              {/* 4-Step Rounded Stepper Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2">
+                {[
+                  { step: 1, title: 'Merchant Account', sub: "Let's get to know you" },
+                  { step: 2, title: 'Catalog Setup', sub: 'Add your products' },
+                  { step: 3, title: 'Policy Guardrails', sub: 'Set rules for AI agents' },
+                  { step: 4, title: "You're Live!", sub: 'Start receiving orders' }
+                ].map(s => (
+                  <div
+                    key={s.step}
+                    onClick={() => { if (s.step <= onboardingStep) setOnboardingStep(s.step); }}
+                    className={`p-3.5 rounded-2xl flex items-center space-x-3 transition cursor-pointer border ${
+                      onboardingStep === s.step
+                        ? 'bg-[#432C81] text-white border-[#432C81] shadow-lg shadow-[#432C81]/20'
+                        : onboardingStep > s.step
+                        ? 'bg-white text-[#432C81] border-[#CCC3FF]'
+                        : 'bg-white/60 text-[#868686] border-slate-200'
+                    }`}
+                  >
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                      onboardingStep === s.step
+                        ? 'bg-white text-[#432C81]'
+                        : onboardingStep > s.step
+                        ? 'bg-[#432C81] text-white'
+                        : 'bg-slate-200 text-[#868686]'
+                    }`}>
+                      {onboardingStep > s.step ? '✓' : s.step}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs">{s.title}</h4>
+                      <p className={`text-[10px] ${onboardingStep === s.step ? 'text-white/80' : 'text-[#868686]'}`}>{s.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* STEP 1: MERCHANT ACCOUNT FORM */}
+              {onboardingStep === 1 && (
+                <div className="bg-white rounded-3xl p-8 border border-[#CCC3FF]/80 shadow-2xl space-y-6 max-w-3xl mx-auto">
+                  <div className="flex items-center space-x-3">
+                    <div className="h-10 w-10 rounded-xl bg-[#F0EDFF] text-[#432C81] flex items-center justify-center text-xl">
+                      🏬
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-extrabold text-[#432C81]">Welcome! Let's set up your Merchant Portal</h2>
+                      <p className="text-xs text-[#868686] mt-0.5">
+                        Provide basic details to establish your merchant identity for AI buyer agents across ACP and UPI rails.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={(e) => { e.preventDefault(); setOnboardingStep(2); }} className="space-y-4 text-xs">
+                    <div>
+                      <label className="block text-[#58315A] font-bold mb-1">Merchant Store Name</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">🏪</span>
+                        <input
+                          type="text"
+                          value={merchantInfo.merchant_name}
+                          onChange={(e) => setMerchantInfo({ ...merchantInfo, merchant_name: e.target.value })}
+                          required
+                          placeholder="e.g. Kirana Express"
+                          className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl pl-9 pr-4 py-3 text-slate-900 text-sm font-semibold focus:outline-none focus:border-[#432C81]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[#58315A] font-bold mb-1">Business Category / Type</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">📦</span>
+                        <select
+                          value={merchantInfo.business_type}
+                          onChange={(e) => setMerchantInfo({ ...merchantInfo, business_type: e.target.value })}
+                          className="w-full bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl pl-9 pr-4 py-3 text-slate-900 text-sm font-semibold focus:outline-none focus:border-[#432C81]"
+                        >
+                          <option value="Grocery & FMCG Retail">Grocery & FMCG Retail</option>
+                          <option value="Consumer Electronics">Consumer Electronics</option>
+                          <option value="Apparel & Fashion">Apparel & Fashion</option>
+                          <option value="Pharmacy & Wellness">Pharmacy & Wellness</option>
+                          <option value="General Store">General Retail Store</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-4 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold text-sm shadow-xl shadow-[#432C81]/20 transition flex items-center justify-center space-x-2"
+                    >
+                      <span>Get Started with Catalog Setup</span>
+                      <span>➔</span>
+                    </button>
+
+                    <p className="text-center text-[11px] text-[#868686] pt-1">
+                      🔒 Your data is encrypted and never shared
+                    </p>
+                  </form>
+                </div>
+              )}
+
+              {/* STEP 2: CATALOG SETUP */}
+              {onboardingStep === 2 && (
+                <div className="bg-white rounded-3xl p-8 border border-[#CCC3FF]/80 shadow-2xl space-y-6 max-w-3xl mx-auto">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-[#432C81]">Step 2: Catalog Setup</h2>
+                    <p className="text-xs text-[#868686] mt-1">
+                      AI buyer agents query product availability and catalog prices. Upload a spreadsheet or seed default products.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Upload Spreadsheet */}
+                    <div className="p-6 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-4 text-center hover:border-[#432C81] transition flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <div className="h-12 w-12 rounded-xl bg-[#F0EDFF] text-[#432C81] flex items-center justify-center font-bold text-2xl mx-auto">
+                          📊
+                        </div>
+                        <h3 className="font-bold text-[#432C81] text-sm">Upload Spreadsheet</h3>
+                        <p className="text-xs text-[#868686]">Drag and drop `.csv` or `.xlsx` file.</p>
+                      </div>
+
+                      <a
+                        href="/catalog/sample-csv"
+                        download
+                        className="inline-block text-xs text-[#432C81] hover:underline font-mono font-semibold"
+                      >
+                        📥 Download Sample CSV Format
+                      </a>
+
+                      <label className="block w-full py-3 px-4 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-bold text-xs shadow-md cursor-pointer text-center">
+                        <span>{isParsingImport ? 'Parsing spreadsheet...' : 'Select CSV / Excel File'}</span>
+                        <input type="file" accept=".csv, .xlsx, .xls" onChange={handleFileUpload} className="hidden" />
+                      </label>
+                    </div>
+
+                    {/* Quick Seed */}
+                    <div className="p-6 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-4 text-center hover:border-[#432C81] transition flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <div className="h-12 w-12 rounded-xl bg-[#F0EDFF] text-[#432C81] flex items-center justify-center font-bold text-2xl mx-auto">
+                          📦
+                        </div>
+                        <h3 className="font-bold text-[#432C81] text-sm">Quick Seed / Manual Add</h3>
+                        <p className="text-xs text-[#868686]">
+                          Already have 10 default grocery SKUs loaded in catalog! You can inspect or add more manually.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => setOnboardingStep(3)}
+                        className="w-full py-3 px-4 rounded-xl bg-white text-[#432C81] font-bold text-xs border border-[#432C81] hover:bg-[#F0EDFF] transition"
+                      >
+                        <span>Use Existing Catalog ({catalog?.products?.length || 10} SKUs) ➔</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: POLICY GUARDRAILS */}
+              {onboardingStep === 3 && (
+                <div className="bg-white rounded-3xl p-8 border border-[#CCC3FF]/80 shadow-2xl space-y-6 max-w-3xl mx-auto">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-[#432C81]">Step 3: Configure AI Policy Guardrails</h2>
+                    <p className="text-xs text-[#868686] mt-1">
+                      Set auto-approve ceilings and spending limits. Agents cannot transact without your explicit guardrails!
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSavePolicy} className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-2">
+                        <label className="block text-[#432C81] font-bold">Auto-Approve Ceiling (₹ INR)</label>
+                        <p className="text-[11px] text-[#868686]">Orders under this amount are approved instantly, no human needed.</p>
+                        <input
+                          type="number"
+                          value={policyFormData.auto_approve_ceiling_inr}
+                          onChange={(e) => setPolicyFormData({ ...policyFormData, auto_approve_ceiling_inr: e.target.value })}
+                          required
+                          className="w-full bg-white border border-[#CCC3FF] rounded-lg px-3 py-2 text-[#432C81] font-bold text-base font-mono"
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-2">
+                        <label className="block text-[#432C81] font-bold">Human Approval Ceiling (₹ INR)</label>
+                        <p className="text-[11px] text-[#868686]">Orders above this go to your Approval Queue instead of being rejected outright.</p>
+                        <input
+                          type="number"
+                          value={policyFormData.human_approval_ceiling_inr}
+                          onChange={(e) => setPolicyFormData({ ...policyFormData, human_approval_ceiling_inr: e.target.value })}
+                          required
+                          className="w-full bg-white border border-[#CCC3FF] rounded-lg px-3 py-2 text-[#58315A] font-bold text-base font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSavingPolicy}
+                      className="w-full py-4 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold text-sm shadow-xl shadow-[#432C81]/20 transition flex items-center justify-center space-x-2"
+                    >
+                      <span>{isSavingPolicy ? 'Saving Guardrails...' : 'Save Policy & Activate Store ➔'}</span>
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* STEP 4: LIVE CONFIRMATION */}
+              {onboardingStep === 4 && (
+                <div className="bg-white rounded-3xl p-8 border border-[#CCC3FF] shadow-2xl space-y-6 text-center max-w-xl mx-auto">
+                  <div className="h-16 w-16 rounded-full bg-[#ECBB5F]/20 text-[#432C81] flex items-center justify-center font-bold text-3xl mx-auto border border-[#ECBB5F]">
+                    🎉
+                  </div>
+
+                  <div>
+                    <h2 className="text-2xl font-black text-[#432C81]">Your Store is Live for AI Buyer Agents!</h2>
+                    <p className="text-xs text-[#58315A] mt-2">
+                      Your store is now discoverable and transactable by AI buyer-agents across ACP and UPI rails.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] text-left font-mono text-xs space-y-2 text-[#58315A]">
+                    <p><span className="text-[#868686]">Store Name:</span> <span className="text-[#432C81] font-bold">{merchantInfo.merchant_name}</span></p>
+                    <p><span className="text-[#868686]">Catalog SKUs:</span> <span className="text-[#432C81] font-bold">{catalog?.products?.length || 10} SKUs Ready</span></p>
+                    <p><span className="text-[#868686]">Auto-Approve Limit:</span> <span className="text-emerald-600 font-bold">₹{policyFormData.auto_approve_ceiling_inr}</span></p>
+                    <p><span className="text-[#868686]">Escalation Ceiling:</span> <span className="text-[#ECBB5F] font-bold">₹{policyFormData.human_approval_ceiling_inr}</span></p>
+                  </div>
+
+                  <button
+                    onClick={completeOnboardingAndEnterConsole}
+                    className="w-full py-4 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold text-sm shadow-xl shadow-[#432C81]/20 transition"
+                  >
+                    Enter Merchant Console 🚀
+                  </button>
+                </div>
+              )}
+
+              {/* Bottom 4 Feature Cards Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+                <div className="p-5 rounded-2xl bg-[#FFFDF7] border border-[#ECBB5F]/40 shadow-sm flex items-start space-x-3">
+                  <div className="h-9 w-9 rounded-xl bg-[#ECBB5F]/20 text-[#58315A] flex items-center justify-center text-lg shrink-0">
+                    🛡️
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs text-[#432C81]">Secure by Design</h4>
+                    <p className="text-[11px] text-[#868686] mt-0.5 leading-snug">End-to-end encryption & policy guardrails</p>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-[#FFFDF7] border border-[#ECBB5F]/40 shadow-sm flex items-start space-x-3">
+                  <div className="h-9 w-9 rounded-xl bg-[#ECBB5F]/20 text-[#58315A] flex items-center justify-center text-lg shrink-0">
+                    ⚡
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs text-[#432C81]">AI Commerce Ready</h4>
+                    <p className="text-[11px] text-[#868686] mt-0.5 leading-snug">Built for AI agents across ACP & UPI networks</p>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-[#FFFDF7] border border-[#ECBB5F]/40 shadow-sm flex items-start space-x-3">
+                  <div className="h-9 w-9 rounded-xl bg-[#ECBB5F]/20 text-[#58315A] flex items-center justify-center text-lg shrink-0">
+                    📜
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs text-[#432C81]">You're in Control</h4>
+                    <p className="text-[11px] text-[#868686] mt-0.5 leading-snug">Set rules, limits and approvals on your terms</p>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-[#FFFDF7] border border-[#ECBB5F]/40 shadow-sm flex items-start space-x-3">
+                  <div className="h-9 w-9 rounded-xl bg-[#ECBB5F]/20 text-[#58315A] flex items-center justify-center text-lg shrink-0">
+                    ₹
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs text-[#432C81]">Frictionless Payments</h4>
+                    <p className="text-[11px] text-[#868686] mt-0.5 leading-snug">UPI, Cards, Netbanking & more — handled seamlessly</p>
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            <footer className="text-center text-xs text-[#868686] pt-4">
+              © 2026 MerchantPass Inc. A merchant's passport to agentic commerce.
+            </footer>
+
+            {renderModals()}
+          </div>
+        );
+      }
+
+      // =========================================================================
+      // MODE B: MAIN MERCHANT DASHBOARD CONSOLE (Exact design match with Screenshot 2)
+      // =========================================================================
+      return (
+        <div className="min-h-screen bg-[#F8F7FC] font-sans flex flex-col text-slate-800 antialiased">
+          {/* Top Header Bar */}
+          <header className="border-b border-[#CCC3FF]/50 bg-white sticky top-0 z-40 shadow-sm">
+            <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+              
+              {/* Left Brand Logo */}
+              <div className="flex items-center space-x-3 w-64">
+                <div className="h-9 w-9 rounded-xl bg-[#432C81] flex items-center justify-center font-black text-white text-sm shadow-md">
+                  MP
+                </div>
+                <span className="font-black text-xl tracking-tight text-[#432C81]">MerchantPass</span>
+              </div>
+
+              {/* Middle Search Input */}
+              <div className="flex-1 max-w-md mx-6">
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-[#868686] text-sm">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search orders, agents, protocols..."
+                    className="w-full bg-[#F8F7FC] border border-[#CCC3FF]/60 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-[#868686] focus:outline-none focus:border-[#432C81]"
+                  />
+                </div>
+              </div>
+
+              {/* Right User Bar & Controls */}
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-[#F0EDFF] text-xs font-semibold text-[#432C81]">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 pulse-dot"></span>
+                  <span>Live Sync</span>
+                  <span className="text-[#868686] font-mono">• 3s</span>
+                </div>
+
+                <div className="relative cursor-pointer">
+                  <span className="text-lg">🔔</span>
+                  <span className="absolute -top-1 -right-1 h-4 w-4 bg-[#FF8989] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    3
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-2 border-l border-slate-200 pl-4">
+                  <div className="h-8 w-8 rounded-full bg-[#58315A] text-white font-bold text-xs flex items-center justify-center shadow-sm">
+                    SL
+                  </div>
+                  <span className="text-xs font-bold text-[#432C81]">Store Live</span>
+                </div>
+
+                <button
+                  onClick={handleResetDemoData}
+                  disabled={isResetting}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F0EDFF] text-[#432C81] text-xs font-bold border border-[#CCC3FF] shadow-sm transition"
+                >
+                  🔄 Reset Demo / Onboarding
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Console Main Body Layout */}
+          <div className="max-w-7xl mx-auto px-6 py-6 flex-1 w-full flex flex-col md:flex-row gap-6">
+            
+            {/* LEFT SIDEBAR NAVIGATION (Matching Screenshot 2) */}
+            <aside className="w-full md:w-64 space-y-6 shrink-0">
+              
+              {/* Primary Menu */}
+              <div className="space-y-1">
+                <p className="px-3 text-[10px] font-bold text-[#868686] uppercase tracking-wider mb-2">PRIMARY MENU</p>
+
+                <button
+                  onClick={() => setActiveTab('live_orders')}
+                  className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-between ${
+                    activeTab === 'live_orders'
+                      ? 'bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF]'
+                      : 'text-[#868686] hover:text-[#432C81] hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <span>🔲</span>
+                    <span>Live Orders</span>
+                  </div>
+                  <span className="px-2 py-0.5 text-[10px] rounded-full bg-[#432C81] text-white font-mono font-bold">
+                    {auditLogs.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('approval_queue')}
+                  className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-between ${
+                    activeTab === 'approval_queue'
+                      ? 'bg-[#FFF8E7] text-[#58315A] border border-[#ECBB5F]'
+                      : 'text-[#868686] hover:text-[#432C81] hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <span>⏳</span>
+                    <span>Approval Queue</span>
+                  </div>
+                  <span className={`px-2 py-0.5 text-[10px] rounded-full font-mono font-bold ${
+                    escalatedCount > 0 ? 'bg-[#ECBB5F] text-[#432C81]' : 'bg-slate-200 text-[#868686]'
+                  }`}>
+                    {escalatedCount}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('catalog')}
+                  className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center space-x-2.5 ${
+                    activeTab === 'catalog'
+                      ? 'bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF]'
+                      : 'text-[#868686] hover:text-[#432C81] hover:bg-white'
+                  }`}
+                >
+                  <span>🛍️</span>
+                  <span>Catalog</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('policy')}
+                  className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center space-x-2.5 ${
+                    activeTab === 'policy'
+                      ? 'bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF]'
+                      : 'text-[#868686] hover:text-[#432C81] hover:bg-white'
+                  }`}
+                >
+                  <span>🛡️</span>
+                  <span>Policy Settings</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('channel_readiness')}
+                  className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center space-x-2.5 ${
+                    activeTab === 'channel_readiness'
+                      ? 'bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF]'
+                      : 'text-[#868686] hover:text-[#432C81] hover:bg-white'
+                  }`}
+                >
+                  <span>🌐</span>
+                  <span>Channel Readiness</span>
+                </button>
+              </div>
+
+              {/* Settings Menu */}
+              <div className="space-y-1 pt-2 border-t border-slate-200">
+                <p className="px-3 text-[10px] font-bold text-[#868686] uppercase tracking-wider mb-2">SETTINGS</p>
+                <div className="px-3 py-2 text-xs text-[#868686] font-medium flex items-center space-x-2 cursor-not-allowed opacity-75">
+                  <span>⚙️</span>
+                  <span>Store Settings</span>
+                </div>
+                <div className="px-3 py-2 text-xs text-[#868686] font-medium flex items-center space-x-2 cursor-not-allowed opacity-75">
+                  <span>👥</span>
+                  <span>Team & Access</span>
+                </div>
+                <div className="px-3 py-2 text-xs text-[#868686] font-medium flex items-center space-x-2 cursor-not-allowed opacity-75">
+                  <span>🔌</span>
+                  <span>Integrations</span>
+                </div>
+                <div className="px-3 py-2 text-xs text-[#868686] font-medium flex items-center space-x-2 cursor-not-allowed opacity-75">
+                  <span>📜</span>
+                  <span>Audit Logs</span>
+                </div>
+              </div>
+
+              {/* Need Help Card Widget (Matching Screenshot 2) */}
+              <div className="p-4 rounded-2xl bg-[#F0EDFF] border border-[#CCC3FF] space-y-2">
+                <div className="flex items-center space-x-2 text-[#432C81] font-bold text-xs">
+                  <span>🎧</span>
+                  <span>Need help?</span>
+                </div>
+                <p className="text-[11px] text-[#58315A]">We're here to support you.</p>
+                <button className="w-full py-1.5 rounded-lg bg-white text-[#432C81] font-bold text-[11px] border border-[#CCC3FF] hover:bg-slate-50 transition">
+                  Visit Help Center ›
+                </button>
+              </div>
+
+              {/* Bottom Dark Store Widget (Matching Screenshot 2) */}
+              <div className="p-3.5 rounded-2xl bg-[#432C81] text-white space-y-1 shadow-lg">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2 font-bold">
+                    <span>🏪</span>
+                    <span>Store Live</span>
+                  </div>
+                  <span className="text-[10px]">▼</span>
+                </div>
+                <p className="text-[10px] text-[#CCC3FF] font-mono truncate">store_live@demo.com</p>
+              </div>
+            </aside>
+
+            {/* MAIN DASHBOARD CONTENT AREA */}
+            <main className="flex-1 min-w-0 space-y-6 overflow-hidden">
+              
+              {/* Header Greeting */}
+              <div>
+                <h1 className="text-2xl font-black text-[#432C81] tracking-tight flex items-center space-x-2">
+                  <span>Good morning, Store Live! 👋</span>
+                </h1>
+                <p className="text-xs text-[#868686] mt-0.5 font-medium">
+                  Here's what's happening with your AI agent orders.
+                </p>
+              </div>
+
+              {/* Toast Notification */}
+              {statusToast && (
+                <div className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+                  statusToast.type === 'success' ? 'bg-emerald-50 border-emerald-300 text-emerald-900' :
+                  statusToast.type === 'info' ? 'bg-[#F0EDFF] border-[#CCC3FF] text-[#432C81]' :
+                  'bg-[#FFF0F0] border-[#FF8989] text-rose-900'
+                }`}>
+                  <div>
+                    <h4 className="font-extrabold text-xs">{statusToast.title}</h4>
+                    <p className="text-[11px] opacity-90 font-mono mt-0.5">{statusToast.message}</p>
+                  </div>
+                  <button onClick={() => setStatusToast(null)} className="text-xs font-bold px-2.5 py-1 rounded bg-white border">
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              {/* SECTION 1: LIVE ORDERS SCREEN (Default Dashboard View) */}
+              {activeTab === 'live_orders' && (
+                <div className="space-y-6">
+                  
+                  {/* 4 Pastel Stat KPI Cards (Exact match with Screenshot 2) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Stat 1: Total Agent Orders */}
+                    <div className="bg-[#F0EDFF] rounded-2xl p-5 border border-[#CCC3FF] space-y-3">
+                      <div className="h-10 w-10 rounded-xl bg-white text-[#432C81] flex items-center justify-center text-lg shadow-sm">
+                        📄
+                      </div>
+                      <div>
+                        <p className="text-xs text-[#58315A] font-bold">Total Agent Orders</p>
+                        <p className="text-3xl font-black text-[#432C81] mt-1 font-mono">{auditLogs.length}</p>
+                        <p className="text-[11px] text-[#868686] mt-1">All time</p>
+                      </div>
+                    </div>
+
+                    {/* Stat 2: Approved */}
+                    <div className="bg-[#EBFBEE] rounded-2xl p-5 border border-[#86EFAC] space-y-3">
+                      <div className="h-10 w-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg font-bold shadow-sm">
+                        ✓
+                      </div>
+                      <div>
+                        <p className="text-xs text-emerald-900 font-bold">Approved</p>
+                        <p className="text-3xl font-black text-emerald-700 mt-1 font-mono">{approvedCount}</p>
+                        <p className="text-[11px] text-emerald-600 mt-1 font-semibold">
+                          {auditLogs.length > 0 ? ((approvedCount / auditLogs.length) * 100).toFixed(1) : 0}% of total
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stat 3: In Queue */}
+                    <div className="bg-[#FFF8E7] rounded-2xl p-5 border border-[#ECBB5F] space-y-3">
+                      <div className="h-10 w-10 rounded-xl bg-[#ECBB5F] text-[#432C81] flex items-center justify-center text-lg font-bold shadow-sm">
+                        ⏳
+                      </div>
+                      <div>
+                        <p className="text-xs text-[#58315A] font-bold">In Queue</p>
+                        <p className="text-3xl font-black text-[#58315A] mt-1 font-mono">{escalatedCount}</p>
+                        <p className="text-[11px] text-[#868686] mt-1 font-semibold">
+                          {auditLogs.length > 0 ? ((escalatedCount / auditLogs.length) * 100).toFixed(1) : 0}% of total
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stat 4: Rejected */}
+                    <div className="bg-[#FFF0F0] rounded-2xl p-5 border border-[#FF8989] space-y-3">
+                      <div className="h-10 w-10 rounded-xl bg-[#FF8989] text-white flex items-center justify-center text-lg font-bold shadow-sm">
+                        ✕
+                      </div>
+                      <div>
+                        <p className="text-xs text-rose-900 font-bold">Rejected</p>
+                        <p className="text-3xl font-black text-rose-700 mt-1 font-mono">{rejectedCount}</p>
+                        <p className="text-[11px] text-rose-600 mt-1 font-semibold">
+                          {auditLogs.length > 0 ? ((rejectedCount / auditLogs.length) * 100).toFixed(1) : 0}% of total
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live AI Agent Orders Table Card */}
+                  <div className="bg-white rounded-2xl border border-[#CCC3FF]/60 shadow-sm overflow-hidden">
+                    
+                    {/* Table Header & Controls */}
+                    <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h2 className="font-extrabold text-[#432C81] text-base">Live AI Agent Orders</h2>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF]">
+                            ● Real-time feed
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#868686] mt-0.5">
+                          Every order placed by an AI buyer-agent, with the reason it was approved, escalated, or rejected.
+                        </p>
+                      </div>
+
+                      {/* Filters */}
+                      <div className="flex items-center space-x-3">
+                        <select
+                          value={selectedProtocolFilter}
+                          onChange={(e) => setSelectedProtocolFilter(e.target.value)}
+                          className="bg-[#F8F7FC] border border-[#CCC3FF] rounded-xl px-3 py-1.5 text-xs text-[#432C81] font-bold focus:outline-none"
+                        >
+                          <option value="ALL">Filter: All Protocols</option>
+                          <option value="ACP">ACP</option>
+                          <option value="UPI_NATIVE">UPI_NATIVE</option>
+                        </select>
+
+                        <button
+                          onClick={fetchAuditLogs}
+                          className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#F0EDFF] text-[#432C81] text-xs font-bold border border-[#CCC3FF] transition flex items-center space-x-1.5"
+                        >
+                          <span>🔄</span>
+                          <span>Refresh</span>
+                        </button>
+                      </div>
+                    </div>
+
+
+
+                    {/* Table Structure */}
+                    <div className="overflow-x-auto custom-scrollbar w-full">
+                      <table className="w-full text-left text-xs table-auto">
+                        <thead className="bg-[#F8F7FC] text-[#868686] font-bold border-b border-slate-200">
+                          <tr>
+                            <th className="px-3 py-3 whitespace-nowrap">Time</th>
+                            <th className="px-3 py-3 whitespace-nowrap">Protocol</th>
+                            <th className="px-3 py-3 min-w-[140px]">Buyer Agent ID</th>
+                            <th className="px-3 py-3 whitespace-nowrap">SKU / Qty</th>
+                            <th className="px-3 py-3 whitespace-nowrap">Total (₹)</th>
+                            <th className="px-3 py-3 whitespace-nowrap">Decision</th>
+                            <th className="px-3 py-3">Matched Rule / Reason</th>
+                            <th className="px-3 py-3">Razorpay Order ID</th>
+                            <th className="px-3 py-3 text-right whitespace-nowrap">Trace</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {filteredAuditLogs.length === 0 ? (
+                            <tr>
+                              <td colSpan="9" className="px-4 py-12 text-center text-[#868686] font-sans">
+                                <p className="text-xl mb-1">🤖</p>
+                                <p className="font-bold text-slate-700">No agent orders matching filter.</p>
+                                <p className="text-xs mt-1">Run terminal agent script (`node mock-acp-agent.js`) to generate real order events!</p>
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredAuditLogs.map((log) => {
+                              const isApprove = log.decision === 'approved' || log.decision === 'paid';
+                              const isEscalate = log.decision === 'escalated' || log.decision === 'pending_approval';
+                              const isExpanded = expandedOrderEvents.has(log.event_id);
+
+                              // Soft row color matching Screenshot 2
+                              const rowBgClass = isApprove ? 'bg-[#F3FDF5]' : isEscalate ? 'bg-[#FFFDF0]' : 'bg-[#FFF5F5]';
+
+                              return (
+                                <React.Fragment key={log.event_id}>
+                                  <tr className={`${rowBgClass} hover:opacity-95 transition`}>
+                                    <td className="px-3 py-3 text-[#868686] whitespace-nowrap text-[11px]">
+                                      {new Date(log.timestamp).toLocaleTimeString()}
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF]">
+                                        {log.protocol}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-3 font-medium text-[#432C81] text-xs whitespace-normal break-all max-w-[140px] w-36">
+                                      <div className="flex items-start space-x-1">
+                                        <span className="shrink-0 mt-0.5">🤖</span>
+                                        <span className="break-all whitespace-normal leading-snug">{log.buyer_agent_id}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-slate-700 font-sans whitespace-nowrap">
+                                      <span className="font-mono font-bold text-[#432C81]">{log.sku}</span> × {log.qty}
+                                    </td>
+                                    <td className="px-3 py-3 text-slate-900 font-extrabold whitespace-nowrap">
+                                      ₹{log.declared_total_inr}
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center space-x-1 ${
+                                        isApprove ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                                        isEscalate ? 'bg-[#FFF8E7] text-[#58315A] border border-[#ECBB5F]' :
+                                        'bg-rose-100 text-rose-800 border border-rose-300'
+                                      }`}>
+                                        <span>{isApprove ? '✓ approved' : isEscalate ? '⏳ escalated' : '✕ rejected'}</span>
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-3 font-sans text-slate-700 max-w-[200px]" title={log.reason}>
+                                      <span className="font-bold text-[#432C81] block text-xs truncate">{log.matched_rule}</span>
+                                      <span className="text-[10px] text-[#868686] block truncate">{log.reason}</span>
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap">
+                                      {log.razorpay_order_id ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F0EDFF] text-[#432C81] border border-[#CCC3FF] inline-flex items-center space-x-1" title="Razorpay Order Created">
+                                          <span>📦</span>
+                                          <span>{log.razorpay_order_id}</span>
+                                        </span>
+                                      ) : isEscalate ? (
+                                        <div className="flex items-center space-x-1">
+                                          <button
+                                            onClick={() => handleApproveOrder(log.event_id)}
+                                            disabled={actionEventId === log.event_id}
+                                            className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-sm"
+                                          >
+                                            Approve
+                                          </button>
+                                          <button
+                                            onClick={() => handleRejectOrder(log.event_id)}
+                                            disabled={actionEventId === log.event_id}
+                                            className="px-2 py-0.5 rounded bg-[#FF8989] hover:bg-rose-600 text-white text-[10px] font-bold shadow-sm"
+                                          >
+                                            Reject
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[#868686]">-</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right">
+                                      <button
+                                        onClick={() => toggleOrderTrace(log.event_id)}
+                                        className="h-7 w-7 rounded-lg bg-white border border-[#CCC3FF] hover:bg-[#F0EDFF] text-[#432C81] font-bold inline-flex items-center justify-center"
+                                        title="Toggle Decision Trace"
+                                      >
+                                        👁️
+                                      </button>
+                                    </td>
+                                  </tr>
+
+                                  {/* EXPANDABLE DECISION TRACE DRAWER */}
+                                  {isExpanded && (
+                                    <tr className="bg-white">
+                                      <td colSpan="9" className="px-6 py-4 border-t border-b border-[#CCC3FF]/60">
+                                        <div className="space-y-3">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="font-extrabold text-[#432C81] text-xs flex items-center space-x-2">
+                                              <span>🔍</span>
+                                              <span>Step-by-Step Policy Engine Evaluation Trace</span>
+                                            </h4>
+                                            <span className="text-[10px] font-mono text-[#868686]">Event ID: {log.event_id}</span>
+                                          </div>
+
+                                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                                            {Array.isArray(log.trace) && log.trace.length > 0 ? (
+                                              log.trace.map((step, sIdx) => {
+                                                const isPass = step.status === 'pass';
+                                                const isEsc = step.status === 'escalate';
+                                                return (
+                                                  <div
+                                                    key={sIdx}
+                                                    className={`p-3 rounded-xl border text-[11px] ${
+                                                      isPass ? 'bg-[#F3FDF5] border-emerald-300 text-emerald-900' :
+                                                      isEsc ? 'bg-[#FFF8E7] border-[#ECBB5F] text-[#58315A]' :
+                                                      'bg-[#FFF0F0] border-[#FF8989] text-rose-900'
+                                                    }`}
+                                                  >
+                                                    <div className="flex justify-between items-center mb-1">
+                                                      <span className="font-bold">{sIdx + 1}. {step.check}</span>
+                                                      <span className="font-bold font-mono text-[9px] uppercase">
+                                                        {isPass ? '✓ PASS' : isEsc ? '⏳ ESCALATE' : '✕ FAIL'}
+                                                      </span>
+                                                    </div>
+                                                    <p className="text-[10px] opacity-90 font-mono truncate">{step.details}</p>
+                                                  </div>
+                                                );
+                                              })
+                                            ) : (
+                                              <p className="text-[#868686] text-xs col-span-4 font-sans">
+                                                No detailed trace available for this record.
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 2: APPROVAL QUEUE */}
+              {activeTab === 'approval_queue' && (
+                <div className="bg-white rounded-2xl p-6 border border-[#ECBB5F]/60 shadow-sm space-y-6">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                    <div>
+                      <h2 className="font-extrabold text-[#432C81] text-lg flex items-center space-x-2">
+                        <span>⏳</span>
+                        <span>Human Approval Escalation Queue</span>
+                      </h2>
+                      <p className="text-xs text-[#868686] mt-0.5">
+                        High-value orders exceeding auto-approve ceiling (₹3,000) placed on hold for merchant approval.
+                      </p>
+                    </div>
+                    <span className="px-3.5 py-1 rounded-full bg-[#FFF8E7] text-[#58315A] font-extrabold text-xs border border-[#ECBB5F]">
+                      {escalatedCount} Pending Escalations
+                    </span>
+                  </div>
+
+                  {escalatedLogs.length === 0 ? (
+                    <div className="py-12 text-center text-[#868686]">
+                      <p className="text-3xl mb-2">🎉</p>
+                      <p className="font-bold text-[#432C81]">No pending escalations in queue.</p>
+                      <p className="text-xs mt-1 font-mono">Run `node mock-acp-agent.js --scenario=escalation` in terminal to trigger an escalation!</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {escalatedLogs.map((item) => (
+                        <div key={item.event_id} className="p-5 rounded-2xl bg-[#FFF8E7]/50 border border-[#ECBB5F] space-y-4 shadow-sm">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#ECBB5F] text-[#432C81]">
+                                Escalated Order
+                              </span>
+                              <h3 className="font-black text-[#432C81] text-base mt-1.5">{item.sku}</h3>
+                              <p className="text-xs text-[#868686] font-mono">Agent: {item.buyer_agent_id}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[10px] text-[#868686] font-mono">Declared Total</p>
+                              <p className="text-2xl font-black text-[#432C81] font-mono">₹{item.declared_total_inr}</p>
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-white border border-[#CCC3FF]/50 text-xs text-slate-700 font-mono space-y-1">
+                            <p><span className="text-[#868686]">Protocol:</span> {item.protocol}</p>
+                            <p><span className="text-[#868686]">Matched Rule:</span> {item.matched_rule}</p>
+                            <p><span className="text-[#868686]">Reason:</span> {item.reason}</p>
+                          </div>
+
+                          <div className="flex items-center space-x-3 pt-1">
+                            <button
+                              onClick={() => handleApproveOrder(item.event_id)}
+                              disabled={actionEventId === item.event_id}
+                              className="flex-1 py-2.5 px-3 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold text-xs shadow-md transition flex items-center justify-center space-x-1.5"
+                            >
+                              <span>✓</span>
+                              <span>{actionEventId === item.event_id ? 'Approving...' : 'Approve & Create Order'}</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleRejectOrder(item.event_id)}
+                              disabled={actionEventId === item.event_id}
+                              className="py-2.5 px-4 rounded-xl bg-[#FF8989] hover:bg-rose-600 text-white font-extrabold text-xs shadow-md transition flex items-center justify-center space-x-1.5"
+                            >
+                              <span>✕</span>
+                              <span>{actionEventId === item.event_id ? 'Rejecting...' : 'Reject'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECTION 3: CATALOG */}
+              {activeTab === 'catalog' && catalog && (
+                <div className="bg-white rounded-2xl border border-[#CCC3FF]/60 shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="font-extrabold text-[#432C81] text-base">Product Catalog ({catalog.products.length} SKUs)</h2>
+                      <p className="text-xs text-[#868686] mt-0.5">Manage SKUs, live pricing, inventory stock numbers, and Excel/CSV bulk imports.</p>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <a
+                        href="/catalog/sample-csv"
+                        download
+                        className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#F0EDFF] text-[#432C81] font-bold text-xs border border-[#CCC3FF] transition flex items-center space-x-1.5"
+                      >
+                        <span>📥</span>
+                        <span>Download Template</span>
+                      </a>
+
+                      <label className="px-3.5 py-2 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center space-x-1.5">
+                        <span>📊</span>
+                        <span>{isParsingImport ? 'Parsing...' : 'Upload Spreadsheet'}</span>
+                        <input type="file" accept=".csv, .xlsx, .xls" onChange={handleFileUpload} className="hidden" />
+                      </label>
+
+                      <button
+                        onClick={openAddProductModal}
+                        className="px-3.5 py-2 rounded-xl bg-[#ECBB5F] hover:bg-amber-400 text-[#432C81] font-extrabold text-xs shadow-sm transition flex items-center space-x-1"
+                      >
+                        <span>➕</span>
+                        <span>Add SKU Manually</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#F8F7FC] text-[#868686] font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3">SKU</th>
+                          <th className="px-4 py-3">Product Name</th>
+                          <th className="px-4 py-3">Category</th>
+                          <th className="px-4 py-3">Price (₹)</th>
+                          <th className="px-4 py-3">Live Stock Qty</th>
+                          <th className="px-4 py-3">GTIN</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {catalog.products.map((p) => {
+                          const isBlocked = policy?.blocked_skus?.includes(p.sku);
+
+                          return (
+                            <tr key={p.sku} className="hover:bg-[#F8F7FC] transition">
+                              <td className="px-4 py-3.5 font-bold text-[#432C81]">
+                                {p.sku}
+                                {isBlocked && (
+                                  <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FF8989]/20 text-rose-800 border border-[#FF8989]">
+                                    BLOCKED
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3.5 font-sans font-bold text-slate-800">{p.title}</td>
+                              <td className="px-4 py-3.5">
+                                <span className="px-2 py-0.5 rounded-full bg-[#F0EDFF] text-[#432C81] text-[10px] font-bold">
+                                  {p.category}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3.5 font-extrabold text-[#432C81]">₹{p.price_inr}</td>
+                              <td className="px-4 py-3.5 font-bold">
+                                {p.stock_qty > 0 ? (
+                                  <span className="text-emerald-700">{p.stock_qty} units</span>
+                                ) : (
+                                  <span className="text-[#FF8989] font-black">OUT OF STOCK</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3.5 text-[#868686]">{p.gtin}</td>
+                              <td className="px-4 py-3.5 text-right space-x-2">
+                                <button
+                                  onClick={() => openEditProductModal(p)}
+                                  className="px-2.5 py-1 rounded-lg bg-white border border-[#CCC3FF] hover:bg-[#F0EDFF] text-[#432C81] text-[11px] font-sans font-bold"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(p.sku)}
+                                  className="px-2.5 py-1 rounded-lg bg-[#FFF0F0] hover:bg-rose-100 text-rose-700 text-[11px] font-sans font-bold border border-[#FF8989]"
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 4: POLICY SETTINGS */}
+              {activeTab === 'policy' && (
+                <div className="bg-white rounded-2xl p-6 border border-[#CCC3FF]/60 shadow-sm space-y-6">
+                  <div className="border-b border-slate-100 pb-4">
+                    <h2 className="font-extrabold text-[#432C81] text-lg flex items-center space-x-2">
+                      <span>🛡️</span>
+                      <span>Merchant Policy Guardrails Settings</span>
+                    </h2>
+                    <p className="text-xs text-[#868686] mt-0.5">
+                      Configure live ceilings, velocity caps, blocked SKUs, and buyer agent allow-lists. Updates take effect immediately!
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSavePolicy} className="space-y-6 text-xs">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-2">
+                        <label className="block text-[#432C81] font-bold">Auto-Approve Ceiling (₹ INR)</label>
+                        <p className="text-[11px] text-[#868686]">Orders under this amount are approved instantly, no human needed.</p>
+                        <input
+                          type="number"
+                          value={policyFormData.auto_approve_ceiling_inr}
+                          onChange={(e) => setPolicyFormData({ ...policyFormData, auto_approve_ceiling_inr: e.target.value })}
+                          required
+                          className="w-full bg-white border border-[#CCC3FF] rounded-xl px-3 py-2 text-[#432C81] font-bold text-base font-mono"
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-2">
+                        <label className="block text-[#432C81] font-bold">Human Approval Ceiling (₹ INR)</label>
+                        <p className="text-[11px] text-[#868686]">Orders above this go to your Approval Queue instead of being rejected outright.</p>
+                        <input
+                          type="number"
+                          value={policyFormData.human_approval_ceiling_inr}
+                          onChange={(e) => setPolicyFormData({ ...policyFormData, human_approval_ceiling_inr: e.target.value })}
+                          required
+                          className="w-full bg-white border border-[#CCC3FF] rounded-xl px-3 py-2 text-[#58315A] font-bold text-base font-mono"
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-2">
+                        <label className="block text-[#432C81] font-bold">Hourly Velocity Limit</label>
+                        <p className="text-[11px] text-[#868686]">Max allowed orders per agent per hour before triggering velocity block.</p>
+                        <input
+                          type="number"
+                          value={policyFormData.velocity_limit}
+                          onChange={(e) => setPolicyFormData({ ...policyFormData, velocity_limit: e.target.value })}
+                          required
+                          className="w-full bg-white border border-[#CCC3FF] rounded-xl px-3 py-2 text-[#432C81] font-bold text-base font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Blocked SKUs Selector */}
+                    <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-3">
+                      <label className="block text-[#432C81] font-bold text-sm">Blocked Catalog SKUs for AI Buyer-Agents</label>
+                      <p className="text-xs text-[#868686]">Select SKUs that AI buyer agents are explicitly forbidden from purchasing.</p>
+
+                      {catalog && catalog.products && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1">
+                          {catalog.products.map(p => {
+                            const isBlocked = policyFormData.blocked_skus.includes(p.sku);
+                            return (
+                              <label
+                                key={p.sku}
+                                className={`p-3 rounded-xl border text-xs cursor-pointer flex items-center justify-between transition ${
+                                  isBlocked ? 'bg-[#FFF0F0] border-[#FF8989] text-rose-900' : 'bg-white border-[#CCC3FF] text-[#432C81]'
+                                }`}
+                              >
+                                <div>
+                                  <span className="font-mono font-bold block">{p.sku}</span>
+                                  <span className="text-[10px] text-[#868686] truncate block max-w-[120px]">{p.title}</span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isBlocked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setPolicyFormData({ ...policyFormData, blocked_skus: [...policyFormData.blocked_skus, p.sku] });
+                                    } else {
+                                      setPolicyFormData({ ...policyFormData, blocked_skus: policyFormData.blocked_skus.filter(s => s !== p.sku) });
+                                    }
+                                  }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Allowed Buyer Agent IDs */}
+                    <div className="p-4 rounded-2xl bg-[#F8F7FC] border border-[#CCC3FF] space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-[#432C81] font-bold text-sm">Allowed Buyer Agent Identity Allow-list</label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={policyFormData.allow_all_agents}
+                            onChange={(e) => setPolicyFormData({ ...policyFormData, allow_all_agents: e.target.checked })}
+                            className="rounded border-[#CCC3FF]"
+                          />
+                          <span className="text-xs font-bold text-[#432C81]">Allow All Verified Agents (*)</span>
+                        </label>
+                      </div>
+
+                      {!policyFormData.allow_all_agents && (
+                        <div>
+                          <label className="block text-[#868686] mb-1">Specific Buyer Agent IDs (comma separated)</label>
+                          <input
+                            type="text"
+                            value={policyFormData.allowed_agent_list_text}
+                            onChange={(e) => setPolicyFormData({ ...policyFormData, allowed_agent_list_text: e.target.value })}
+                            placeholder="chatgpt-shopping-agent-v1, claude-shopping-agent-v1"
+                            className="w-full bg-white border border-[#CCC3FF] rounded-xl px-3 py-2 text-[#432C81] font-mono"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={isSavingPolicy}
+                        className="px-6 py-3 rounded-xl bg-[#432C81] hover:bg-[#58315A] text-white font-extrabold text-xs shadow-md transition flex items-center space-x-2"
+                      >
+                        <span>💾</span>
+                        <span>{isSavingPolicy ? 'Saving...' : 'Save Policy Settings'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* SECTION 5: AGENT CHANNEL READINESS */}
+              {activeTab === 'channel_readiness' && (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl p-5 border border-[#CCC3FF]/60 shadow-sm">
+                    <h2 className="font-extrabold text-[#432C81] text-base">Agent Channel Protocol Readiness</h2>
+                    <p className="text-xs text-[#868686] mt-0.5">
+                      Multi-protocol adapter readiness overview for AI buyer-agents querying this catalog.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Channel 1: ACP */}
+                    <div className="bg-white rounded-2xl p-5 border border-[#CCC3FF] shadow-sm space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            ✓ LIVE
+                          </span>
+                          <h3 className="font-extrabold text-[#432C81] text-base mt-2">ACP (Agentic Commerce Protocol)</h3>
+                          <p className="text-xs text-[#868686]">OpenAI + Stripe delegated agent catalog & checkout protocol standard.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => togglePayloadView('acp')}
+                        className="text-xs px-3 py-1.5 rounded-xl bg-[#F0EDFF] text-[#432C81] font-mono font-bold"
+                      >
+                        {expandedPayloadProtocol === 'acp' ? 'Hide technical payload ▲' : 'View technical payload ▼'}
+                      </button>
+                      {expandedPayloadProtocol === 'acp' && (
+                        <pre className="p-3 rounded-xl bg-[#F8F7FC] border border-[#CCC3FF] font-mono text-[11px] text-[#432C81] overflow-x-auto custom-scrollbar max-h-64">
+                          {JSON.stringify(payloadData['acp'] || 'Loading...', null, 2)}
+                        </pre>
+                      )}
+                    </div>
+
+                    {/* Channel 2: UPI-Native */}
+                    <div className="bg-white rounded-2xl p-5 border border-[#CCC3FF] shadow-sm space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            ✓ LIVE
+                          </span>
+                          <h3 className="font-extrabold text-[#432C81] text-base mt-2">UPI-Native Consent Purchases</h3>
+                          <p className="text-xs text-[#868686]">NPCI + Razorpay UPI Circle delegated consent registration pattern.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => togglePayloadView('upi')}
+                        className="text-xs px-3 py-1.5 rounded-xl bg-[#F0EDFF] text-[#432C81] font-mono font-bold"
+                      >
+                        {expandedPayloadProtocol === 'upi' ? 'Hide technical payload ▲' : 'View technical payload ▼'}
+                      </button>
+                      {expandedPayloadProtocol === 'upi' && (
+                        <pre className="p-3 rounded-xl bg-[#F8F7FC] border border-[#CCC3FF] font-mono text-[11px] text-[#432C81] overflow-x-auto custom-scrollbar max-h-64">
+                          {JSON.stringify(payloadData['upi'] || 'Loading...', null, 2)}
+                        </pre>
+                      )}
+                    </div>
+
+                    {/* Channel 3: AP2 */}
+                    <div className="bg-white rounded-2xl p-5 border border-[#CCC3FF] shadow-sm space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#FFF8E7] text-[#58315A] border border-[#ECBB5F]">
+                            Preview — catalog-ready
+                          </span>
+                          <h3 className="font-extrabold text-[#432C81] text-base mt-2">AP2 (Agent Payment Protocol)</h3>
+                          <p className="text-xs text-[#868686]">Google / FIDO W3C verifiable mandate chain specification.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => togglePayloadView('ap2')}
+                        className="text-xs px-3 py-1.5 rounded-xl bg-[#F0EDFF] text-[#432C81] font-mono font-bold"
+                      >
+                        {expandedPayloadProtocol === 'ap2' ? 'Hide technical payload ▲' : 'View technical payload ▼'}
+                      </button>
+                      {expandedPayloadProtocol === 'ap2' && (
+                        <pre className="p-3 rounded-xl bg-[#F8F7FC] border border-[#CCC3FF] font-mono text-[11px] text-[#432C81] overflow-x-auto custom-scrollbar max-h-64">
+                          {JSON.stringify(payloadData['ap2'] || 'Loading...', null, 2)}
+                        </pre>
+                      )}
+                    </div>
+
+                    {/* Channel 4: x402 */}
+                    <div className="bg-white rounded-2xl p-5 border border-[#CCC3FF] shadow-sm space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#FFF8E7] text-[#58315A] border border-[#ECBB5F]">
+                            Preview — catalog-ready
+                          </span>
+                          <h3 className="font-extrabold text-[#432C81] text-base mt-2">x402 (HTTP 402 Payment Required)</h3>
+                          <p className="text-xs text-[#868686]">Coinbase + Cloudflare HTTP 402 header payment standard.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => togglePayloadView('x402')}
+                        className="text-xs px-3 py-1.5 rounded-xl bg-[#F0EDFF] text-[#432C81] font-mono font-bold"
+                      >
+                        {expandedPayloadProtocol === 'x402' ? 'Hide technical payload ▲' : 'View technical payload ▼'}
+                      </button>
+                      {expandedPayloadProtocol === 'x402' && (
+                        <pre className="p-3 rounded-xl bg-[#F8F7FC] border border-[#CCC3FF] font-mono text-[11px] text-[#432C81] overflow-x-auto custom-scrollbar max-h-64">
+                          {JSON.stringify(payloadData['x402'] || 'Loading...', null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+
+          {renderModals()}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
