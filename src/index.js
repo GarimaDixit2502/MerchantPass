@@ -26,6 +26,11 @@ app.use(express.json());
 // Serve static frontend files for merchant dashboard
 app.use(express.static(path.resolve(__dirname, '../public')));
 
+// Explicit root handler to serve index.html on Vercel serverless environment
+app.get('/', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
+});
+
 // Initialize SQLite Database and seed tables
 let dbInitialized = false;
 export async function ensureDbInitialized() {
