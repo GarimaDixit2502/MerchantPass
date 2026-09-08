@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { initDb, resetDemoData } from './db.js';
 import catalogRouter from './catalog/index.js';
@@ -23,13 +24,23 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend files for merchant dashboard
-app.use(express.static(path.resolve(__dirname, '../public')));
+// Public static assets directory resolution (works locally and in Vercel lambdas)
+const publicDir = path.join(process.cwd(), 'public');
+app.use(express.static(publicDir));
 
-// Explicit root handler to serve index.html on Vercel serverless environment
-app.get('/', (req, res) => {
-  res.sendFile(path.resolve(__dirname, '../public/index.html'));
-});
+// Handler to serve Merchant Dashboard HTML across root & Vercel entry aliases
+const serveDashboard = (req, res) => {
+  const indexPath = path.join(publicDir, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.status(200).send('<h1>MerchantPass Server Running</h1>');
+};
+
+app.get('/', serveDashboard);
+app.get('/index.html', serveDashboard);
+app.get('/api', serveDashboard);
+app.get('/api/index.js', serveDashboard);
 
 // Initialize SQLite Database and seed tables
 let dbInitialized = false;

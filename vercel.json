@@ -1,17 +1,18 @@
 {
   "version": 2,
-  "rewrites": [
-    { "source": "/catalog", "destination": "/api/index.js" },
-    { "source": "/catalog/:path*", "destination": "/api/index.js" },
-    { "source": "/audit", "destination": "/api/index.js" },
-    { "source": "/audit/:path*", "destination": "/api/index.js" },
-    { "source": "/policy/:path*", "destination": "/api/index.js" },
-    { "source": "/acp/:path*", "destination": "/api/index.js" },
-    { "source": "/upi/:path*", "destination": "/api/index.js" },
-    { "source": "/ap2/:path*", "destination": "/api/index.js" },
-    { "source": "/x402/:path*", "destination": "/api/index.js" },
-    { "source": "/approval/:path*", "destination": "/api/index.js" },
-    { "source": "/reset-demo", "destination": "/api/index.js" },
-    { "source": "/health", "destination": "/api/index.js" }
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["public/**"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.js"
+    }
   ]
 }
