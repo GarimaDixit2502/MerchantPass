@@ -27,7 +27,23 @@ app.use(express.json());
 app.use(express.static(path.resolve(__dirname, '../public')));
 
 // Initialize SQLite Database and seed tables
-await initDb();
+let dbInitialized = false;
+export async function ensureDbInitialized() {
+  if (!dbInitialized) {
+    await initDb();
+    dbInitialized = true;
+  }
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDbInitialized();
+    next();
+  } catch (err) {
+    console.error('Error initializing DB in middleware:', err);
+    next(err);
+  }
+});
 
 // Mount Specific API Endpoints
 app.use('/catalog', catalogRouter);
@@ -117,14 +133,18 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Agent Passport Express Server running on port ${PORT}`);
-  console.log(`👉 Merchant Dashboard: http://localhost:${PORT}`);
-  console.log(`👉 Health check:        http://localhost:${PORT}/health`);
-  console.log(`👉 Catalog Feed:        http://localhost:${PORT}/catalog`);
-  console.log(`👉 ACP Feed:            http://localhost:${PORT}/acp/feed`);
-  console.log(`👉 UPI Consents:        http://localhost:${PORT}/upi/consents`);
-  console.log(`👉 AP2 Preview:         http://localhost:${PORT}/ap2/preview/SKU-001`);
-  console.log(`👉 x402 Preview:        http://localhost:${PORT}/x402/preview/SKU-001`);
-  console.log(`👉 Audit Trail:         http://localhost:${PORT}/audit`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Agent Passport Express Server running on port ${PORT}`);
+    console.log(`👉 Merchant Dashboard: http://localhost:${PORT}`);
+    console.log(`👉 Health check:        http://localhost:${PORT}/health`);
+    console.log(`👉 Catalog Feed:        http://localhost:${PORT}/catalog`);
+    console.log(`👉 ACP Feed:            http://localhost:${PORT}/acp/feed`);
+    console.log(`👉 UPI Consents:        http://localhost:${PORT}/upi/consents`);
+    console.log(`👉 AP2 Preview:         http://localhost:${PORT}/ap2/preview/SKU-001`);
+    console.log(`👉 x402 Preview:        http://localhost:${PORT}/x402/preview/SKU-001`);
+    console.log(`👉 Audit Trail:         http://localhost:${PORT}/audit`);
+  });
+}
+
+export default app;

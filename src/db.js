@@ -5,7 +5,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dbPath = path.resolve(__dirname, '../agent_passport.db');
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true' || Boolean(process.env.VERCEL_ENV);
+const dbPath = isVercel
+  ? path.resolve('/tmp', 'agent_passport.db')
+  : path.resolve(__dirname, '../agent_passport.db');
 
 const db = new sqlite3.Database(dbPath);
 
